@@ -1,0 +1,46 @@
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+.progress-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-track {
+  width: 100%;
+  background-color: var(--bg-surface-elevated);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width var(--transition-normal);
+}
+
+.progress-fill-primary {
+  background-color: var(--color-primary);
+}
+
+.progress-fill-success {
+  background-color: var(--color-success-text);
+}
+
+.progress-fill-warning {
+  background-color: var(--color-warning-text);
+}
+
+.progress-fill-danger {
+  background-color: var(--color-danger-text);
+}
+
+.progress-fill-need {
+  background-color: var(--color-need-text);
+}

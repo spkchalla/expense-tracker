@@ -1,0 +1,559 @@
+# Expense Tracker PWA — Product and Implementation Brief for Antigravity
+
+## 1. Your role and the goal
+
+Act as a senior full-stack engineer and product designer. Build a production-minded, mobile-first personal expense tracker that can also be used by a small group of friends. The application must be installable as a Progressive Web App (PWA) on a phone.
+
+Use the MERN stack:
+- Frontend: React with Vite, JavaScript, and plain CSS/CSS modules with a shared design system.
+- Backend: Node.js and Express.
+- Database: MongoDB with Mongoose.
+- PWA: Web App Manifest and a service worker, preferably using `vite-plugin-pwa`/Workbox.
+
+The working name can be **Pocket Ledger**. Keep the app name easy to change from one central configuration point.
+
+The user will provide their MongoDB connection string separately. Read it from an environment variable called `MONGODB_URI`. Never hard-code it, print it in logs, commit it, or expose it to the browser. Do not ask for credentials in source code or generate a file containing real secrets.
+
+Build the application, not just a visual prototype. All forms, buttons, filters, navigation, calculations, permissions, and persistence must work. Do not use mock data as if it were real saved data. Seed only clearly identified default categories and an optional development seed account.
+
+## 2. Product purpose and core concepts
+
+The application exists to answer two different questions:
+
+1. **How much must I set aside for unavoidable needs?** These are expenses that I cannot reasonably skip, such as laundry, haircut/grooming, soap and toiletries, and transport. I want to know the amount I should reserve for them, regardless of how much I spend on optional things.
+2. **Where is my variable money going?** These are day-to-day university expenses such as canteen breakfast/lunch/dinner, tea or coffee, late-night bread omelette or snacks, groceries such as chocolate, ice cream, cake and Maggi, quick-commerce orders from Blinkit/Instamart/Zepto, and miscellaneous purchases.
+
+These concepts must not be mixed together in the UI or calculations.
+
+### 2.1 Mandatory Needs / Reserve Planner
+
+A **Need** is a recurring or planned obligation for which the user wants to reserve money. Examples: laundry, haircut, soap/toiletries, transport, phone recharge, or a recurring personal expense.
+
+Each Need should have:
+- Name.
+- Optional category and notes.
+- Monthly reserve target, entered explicitly by the user in INR. This is the amount the user intends to set aside every month. Do not infer it from past spending.
+- Optional expected cost, frequency, and next due date for context.
+- Active/paused status.
+- Optional opening balance for the virtual fund.
+
+The app must calculate and show:
+- Total mandatory reserve target for the selected month: sum of the active Needs' monthly reserve targets.
+- Contributions made toward each Need during that month.
+- Remaining amount to set aside this month for each Need and in total.
+- A progress indicator for each Need.
+- Optional virtual fund balance: opening balance + all contributions - expenses linked to that Need. Clearly label it as a tracker balance, not a bank balance.
+
+Users must be able to add, edit, pause, resume, and archive Needs. Pausing a Need excludes it from future monthly reserve targets but must preserve its history. Editing a target must not rewrite historical contributions or transactions.
+
+A **Need contribution** is a manual record that the user has set aside an amount. It is an allocation, not an expense. It must not be included in expense totals.
+
+When recording an expense, the user may optionally link it to one of their Needs. This records that the expense was paid for that Need and allows the virtual fund balance to be calculated. A linked Need expense must not also be counted as flexible/discretionary spending.
+
+Do not automatically move money, claim to connect to a bank account, or assume that a contribution is an actual bank transfer. This is a planning and tracking tool.
+
+### 2.2 Variable Expenses
+
+A variable expense is a purchase that the user wants to record and analyse. Provide sensible default categories, but allow users to add, rename, reorder, and archive their own categories.
+
+Seed a useful set of categories for each new user, including:
+- Canteen / Meals
+- Tea / Coffee
+- Late-night Snacks
+- Groceries / Hostel Snacks
+- Quick Commerce
+- Transport
+- Laundry
+- Personal Care / Toiletries
+- Haircut / Grooming
+- Miscellaneous
+
+For canteen meals, offer an optional meal period: Breakfast, Lunch, Dinner, or Late Night.
+
+For quick-commerce purchases, offer an optional platform/source: Blinkit, Instamart, Zepto, Other. Do not force the user to record individual items in an order. A single order can be recorded as one transaction with an optional description. The user may record separate line items as separate transactions if they prefer.
+
+Each category should have a setting indicating whether expenses in that category count toward the user's flexible spending budget. Default ordinary food, snack, grocery, quick-commerce, and miscellaneous categories to `countsTowardFlexibleBudget = true`. If an expense is linked to a Need, treat it as Need-related and exclude it from flexible spending regardless of category setting.
+
+### 2.3 Transaction entry
+
+Make recording an expense very fast and comfortable on a phone. The quick-add flow should require only:
+- Amount.
+- Category.
+
+Optional fields:
+- Short description/item.
+- Merchant, shop, canteen, or platform.
+- Date/time (default to now).
+- Meal period.
+- Payment method (Cash, UPI, Card, Other).
+- Link to a Need.
+- Notes.
+
+After saving, show a clear confirmation and allow a short undo action. Remember recently used categories and sources to reduce repeated typing. Include an obvious floating or bottom-bar add button on mobile.
+
+Allow users to view, search, filter, edit, and delete their own transactions. Useful filters include month/date range, category, source/platform, payment method, Need-related versus flexible, and text search. Paginate or progressively load long transaction histories.
+
+Store amounts as integer minor units (paise for INR) in the database to avoid floating-point currency errors. Validate that amounts are positive and within a sensible maximum. Display using `Intl.NumberFormat` and the user's currency setting.
+
+Include optional income entries only if they can be implemented cleanly without confusing the reserve and expense calculations. If included, keep income separate from expense totals. Do not make income tracking a prerequisite for the core app.
+
+## 3. Budgets and dashboard calculations
+
+The user may configure:
+- Monthly money available / allowance (optional planning input).
+- Monthly flexible spending budget (optional; may be entered directly or suggested as monthly available funds minus mandatory reserve target).
+- Optional per-category monthly limits.
+
+The user must be able to see the following on the main dashboard for a selected month:
+1. Mandatory reserve target.
+2. Amount contributed toward Needs this month.
+3. Remaining amount to reserve.
+4. Total expenses this month.
+5. Need-related expenses this month.
+6. Flexible expenses this month.
+7. Flexible budget used and remaining, if a flexible budget is configured.
+8. Category-wise spending breakdown.
+9. Recent transactions.
+10. A simple daily/weekly spending trend.
+
+Use these definitions consistently:
+- `monthlyReserveTarget` = sum of monthly reserve targets for active Needs in the selected month.
+- `contributedThisMonth` = sum of Need contributions in the selected month.
+- `remainingToReserve` = max(0, monthlyReserveTarget - contributedThisMonth).
+- `needExpenses` = expenses with a valid `needId`.
+- `flexibleExpenses` = expenses without a `needId` whose category has `countsTowardFlexibleBudget = true`.
+- `totalExpenses` = all expense transactions, including Need-related expenses.
+- `flexibleBudgetRemaining` = configured flexible budget - flexibleExpenses.
+
+If the app suggests a flexible budget from monthly available funds, use `max(0, monthlyAvailableFunds - monthlyReserveTarget)` and label it as a planning suggestion. Do not call this value the user's actual bank balance or cash balance. Make it clear that dashboard calculations depend on transactions the user has entered and cannot account for unrecorded purchases.
+
+Use the user's selected month and timezone consistently. Default currency to INR and timezone to `Asia/Kolkata`, both changeable in settings. Use calendar months initially; do not introduce complicated custom financial years in the first release.
+
+## 4. Authentication and user accounts
+
+Implement custom email-and-password authentication now. Keep the design extensible so Google OAuth can be added later, but do not implement fake or incomplete Google sign-in buttons.
+
+Requirements:
+- Registration with display name, email, password, and confirmation on the client.
+- Login and logout.
+- Current-user/session endpoint.
+- Change-password flow for an authenticated user.
+- Passwords must be hashed using bcrypt or Argon2. Never store plaintext passwords.
+- Validate and normalize email addresses; enforce a unique index.
+- Enforce a reasonable password policy (minimum 10 characters, with clear validation messages).
+- Use secure, HTTP-only cookies for sessions. Do not store access tokens or passwords in `localStorage`.
+- Use a Mongo-backed session store, or an equally secure and revocable session implementation.
+- Configure `SameSite=Lax`, `Secure` in production, appropriate cookie expiry, and CSRF/origin protections for state-changing requests.
+- Rate-limit login and registration endpoints and use generic authentication failure messages that do not reveal whether an email exists.
+- Provide a clear unauthorized-session flow and redirect to login when appropriate.
+- Add a registration configuration flag so public registration can be enabled or disabled.
+
+Keep the user schema compatible with future OAuth by allowing authentication-provider metadata (for example, a provider name and provider subject ID). A future Google account should be linkable to an existing account by a safe, verified-email account-linking process. Do not create an OAuth implementation now.
+
+Every user-owned database document must include an owner `userId`. Every API query and mutation must enforce ownership on the server. Never rely only on frontend filtering to isolate one user's data from another user's data.
+
+## 5. Admin area and friend privileges
+
+Build a separate protected `/admin` area. It is initially a small user-management feature for fun, but its structure should support additional privileges later.
+
+Roles:
+- `user`
+- `admin`
+
+Bootstrap the first admin through an environment variable such as `BOOTSTRAP_ADMIN_EMAIL` or a one-time server-side seed script. Never expose a public endpoint that lets someone make themselves an admin. Protect admin routes with server-side role checks.
+
+The admin dashboard should show:
+- Registered users.
+- Display name and email.
+- Account creation date.
+- Last active time, if available.
+- Active/suspended status.
+- Role.
+- Transaction count only (count metadata, not transaction details or amounts).
+- Granted feature privileges.
+
+An admin may:
+- Suspend or reactivate ordinary user accounts.
+- Grant or revoke predefined feature privileges to ordinary users.
+- View a simple audit history of administrative changes.
+
+Create a privilege system that can be extended later. Initial examples:
+- `advancedAnalytics`
+- `betaFeatures`
+- `customDashboard`
+
+The first release does not need to build a large premium feature for each flag. It must, however, store privileges, expose them through the authenticated user profile, and demonstrate at least one clean feature-gating example. Enforce privileges on the backend whenever they protect data or an API capability; hiding a button in React is not authorization.
+
+Privacy requirement: **admins must not be able to view friends' expense descriptions, transaction amounts, Need names, contribution amounts, or personal financial reports.** The admin API should return only the user-management fields listed above. Do not create an admin “view as user” feature. Log role, suspension, and privilege changes in an audit collection with actor, target, action, timestamp, and changed values.
+
+Prevent ordinary admins from modifying the bootstrap/owner admin account. Keep the bootstrap admin identity protected through server-side configuration.
+
+## 6. PWA and mobile experience
+
+The app must be mobile-first and installable on Android and supported desktop browsers. It should behave sensibly when installed from the browser.
+
+Implement:
+- Web app manifest with name, short name, icons, theme color, background color, and standalone display mode.
+- Service worker and app-shell caching.
+- Responsive layout for phone, tablet, and desktop.
+- Mobile bottom navigation for the main areas; desktop navigation can use a sidebar/top bar.
+- Touch-friendly controls, readable text, and forms that work with phone keyboards.
+- An install-app prompt when the browser supports it, without repeatedly nagging the user.
+- Online/offline status indicator and a clear sync status.
+
+Offline behavior:
+- Cache the static app shell and static assets.
+- Do not cache authenticated financial API responses in the service worker's general HTTP cache.
+- Support creating expense entries while offline by saving them in IndexedDB (use a small library such as Dexie if useful) as pending records.
+- Give each queued record a client-generated UUID/idempotency key. Sync pending records when connectivity returns and when the user opens the app. Provide a manual “Sync now” action.
+- The backend must enforce idempotency so retrying a queued transaction cannot create duplicates.
+- Clearly distinguish locally saved/pending entries from server-synced entries.
+- If a session expires while offline, keep pending entries safely associated with the correct account and request re-authentication when sync is possible. Never sync one user's queued records into another user's account.
+- Explain pending-record behavior during logout. Do not silently discard unsynced user data. Offer an explicit option to sync first or clear local data.
+- Do not promise background sync on browsers where it is not reliably supported; foreground/online-event sync is sufficient for the first release.
+
+Do not build full offline analytics or cache private account data unnecessarily. The essential offline feature is being able to record an expense and sync it safely later.
+
+## 7. Pages and navigation
+
+Create these pages/views:
+
+### Public
+- Register.
+- Login.
+
+### Authenticated user
+- Dashboard.
+- Add expense / quick add.
+- Transaction history with filters and editing.
+- Needs / reserve planner.
+- Need details and contribution history.
+- Monthly budget settings and category limits.
+- Reports / analytics.
+- Profile and app settings.
+
+### Admin
+- Admin overview.
+- User list and user details (management metadata only).
+- Privilege management.
+- Admin audit log.
+
+Use route guards for authenticated pages and admin pages. Show a proper loading state while session and dashboard data are loading. Handle empty states, API errors, validation errors, and offline states explicitly.
+
+## 8. UI and design system
+
+Design a restrained, polished financial utility. It should feel like a dependable personal tool rather than a generic AI-generated dashboard.
+
+Create design tokens before building pages:
+- A small neutral palette with one restrained accent color and semantic success/warning/error colors.
+- A consistent type scale and typography hierarchy.
+- A spacing scale based on 4px or 8px increments.
+- No more than two or three border-radius sizes.
+- Consistent border, shadow, input, button, card, and focus styles.
+- Shared components for buttons, form fields, cards, dialogs, badges, charts, navigation, loading states, and empty states.
+
+Avoid:
+- Purple gradients or decorative gradients by default.
+- Excessive shadows, glow effects, decorative blobs, or ornamental charts.
+- Giant headings, thin low-contrast body text, or inconsistent typography.
+- Fake testimonials, fake financial data, or invented user names.
+- Decorative controls that do not work.
+- Non-functional social links.
+
+Use subtle, purposeful transitions only. Ensure visible keyboard focus, sufficient contrast, semantic HTML, labels for form inputs, and accessible dialogs. Keep CSS organized in separate files or well-scoped modules rather than placing all styles inline.
+
+The experience should prioritize the following mobile tasks:
+1. Open the app and immediately see the month's reserve requirement and flexible spending status.
+2. Add an expense in a few taps.
+3. Add money set aside toward a Need.
+4. Check where money is going this week or month.
+
+## 9. Reports and useful insights
+
+Provide simple, reliable reports:
+- Spending by category for a selected month.
+- Spending by week/day.
+- Comparison with the previous month.
+- Most-used categories and sources/platforms.
+- Need reserve progress and Need-related spending.
+
+Charts must use real API data and update when filters change. Provide a readable table/list alternative for every chart. Do not overstate conclusions or generate unsolicited financial advice. Keep the initial analytics focused on descriptive spending patterns.
+
+Add CSV export of the signed-in user's own transactions and Needs if it can be implemented safely. Ensure CSV export is scoped to the authenticated user. Never include another user's data.
+
+## 10. Suggested MongoDB models
+
+Use Mongoose schemas with timestamps, validation, and indexes. Adjust the exact schema where useful, but preserve the domain separation and ownership requirements.
+
+### User
+- `displayName`
+- `email` (normalized, unique)
+- `passwordHash` (nullable only for future OAuth-only accounts)
+- `role` (`user` or `admin`)
+- `status` (`active` or `suspended`)
+- `privileges` (array of known privilege keys)
+- `currency` (default `INR`)
+- `timezone` (default `Asia/Kolkata`)
+- `authProviders` (future-compatible provider metadata)
+- `lastActiveAt`
+- timestamps
+
+### Category
+- `userId`
+- `name`
+- optional `parentId`
+- `countsTowardFlexibleBudget`
+- `isArchived`
+- `sortOrder`
+- timestamps
+
+### Need
+- `userId`
+- `name`
+- optional `categoryId` and `notes`
+- `monthlyReserveAmountPaise`
+- optional `expectedCostPaise`, `frequency`, `nextDueDate`
+- `openingBalancePaise` (default 0)
+- `isActive` / archived state
+- timestamps
+
+### NeedContribution
+- `userId`
+- `needId`
+- `amountPaise`
+- `contributedAt`
+- optional `note`
+- timestamps
+
+### Transaction
+- `userId`
+- `type` (`expense`, and optionally `income`)
+- `amountPaise`
+- `categoryId`
+- optional `needId`
+- optional `description`, `merchant`, `source`, `mealPeriod`, `paymentMethod`, `notes`
+- `occurredAt`
+- `clientTransactionId` or idempotency key (unique per user)
+- optional `syncStatus` only if needed for server-side reconciliation
+- timestamps
+
+### MonthlyBudget
+- `userId`
+- `month` in `YYYY-MM` form, interpreted in the user's timezone
+- optional `monthlyAvailableFundsPaise`
+- optional `flexibleBudgetPaise` (explicit override)
+- optional category limit entries (`categoryId`, `limitPaise`)
+- timestamps
+- unique compound index on (`userId`, `month`)
+
+### AdminAuditLog
+- `actorUserId`
+- `targetUserId`
+- `action`
+- `changedFields` (only administrative fields)
+- timestamp
+
+Use indexes for common user-scoped queries, including (`userId`, `occurredAt`), (`userId`, `month`), (`userId`, `needId`), and unique idempotency constraints. Add pagination to list endpoints. Avoid unbounded queries.
+
+## 11. Suggested API structure
+
+Use `/api` as the API prefix, consistent JSON responses, centralized error handling, and request validation on the server.
+
+Authentication:
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `POST /api/auth/change-password`
+
+Profile and settings:
+- `GET /api/profile`
+- `PATCH /api/profile`
+
+Categories:
+- `GET /api/categories`
+- `POST /api/categories`
+- `PATCH /api/categories/:id`
+- `DELETE /api/categories/:id` (prefer archive when historical transactions reference it)
+
+Needs and contributions:
+- `GET /api/needs`
+- `POST /api/needs`
+- `PATCH /api/needs/:id`
+- `DELETE /api/needs/:id` (archive safely; do not erase history)
+- `GET /api/needs/:id/contributions`
+- `POST /api/needs/:id/contributions`
+
+Transactions:
+- `GET /api/transactions` with date, category, source, type, and pagination filters
+- `POST /api/transactions`
+- `POST /api/transactions/sync` for idempotent offline batch sync
+- `PATCH /api/transactions/:id`
+- `DELETE /api/transactions/:id`
+
+Dashboard and budgets:
+- `GET /api/dashboard?month=YYYY-MM`
+- `GET /api/budgets/:month`
+- `PUT /api/budgets/:month`
+- `GET /api/reports/...` for reports that are not already covered by the dashboard response
+
+Admin (all require server-side admin authorization):
+- `GET /api/admin/overview`
+- `GET /api/admin/users`
+- `GET /api/admin/users/:id`
+- `PATCH /api/admin/users/:id/status`
+- `PATCH /api/admin/users/:id/privileges`
+- `GET /api/admin/audit-logs`
+
+Do not return password hashes, session data, secrets, or unrestricted Mongo documents from any endpoint. Return explicit response DTOs. Ensure admin endpoints never return financial transaction data or amounts.
+
+## 12. Security, privacy, and reliability
+
+Treat this as a real application containing private financial information.
+
+- Store secrets only in environment variables. Provide `.env.example` with placeholders, not actual secrets.
+- Add `.env`, local database files, and build artifacts to `.gitignore`.
+- Use Helmet, strict CORS allowlists, request-size limits, rate limiting, and safe error messages.
+- Validate all inputs on the backend. Never trust client-supplied `userId`, `role`, privilege, owner, or admin status.
+- Derive the owner ID from the authenticated session, not the request body.
+- Scope every user query by authenticated `userId`.
+- Check that referenced categories and Needs belong to the current user before creating/updating a transaction.
+- Use safe MongoDB query construction and prevent operator injection.
+- Protect state-changing routes against CSRF and validate request origin where appropriate.
+- Do not log passwords, cookies, session tokens, full MongoDB URLs, or private transaction content.
+- Handle suspended users by rejecting new authenticated API activity and invalidating their sessions.
+- Make deletes and archives deliberate. Confirm destructive actions and preserve financial history where possible.
+- Provide a user-facing account/data deletion path only if it can correctly clean up or anonymize related records; otherwise document it as a later item rather than implementing an unsafe partial deletion.
+
+## 13. Code quality and project structure
+
+Use a clear separation between frontend and backend, for example:
+
+```text
+project-root/
+  client/
+    public/
+    src/
+      app/
+      components/
+      features/
+        auth/
+        dashboard/
+        transactions/
+        needs/
+        budgets/
+        reports/
+        admin/
+      hooks/
+      lib/
+      styles/
+      services/
+  server/
+    src/
+      config/
+      models/
+      routes/
+      controllers/
+      middleware/
+      services/
+      validators/
+      utils/
+    scripts/
+  docs/
+  .env.example
+  .gitignore
+  README.md
+```
+
+Keep controllers thin and put calculations/business rules in testable services. Avoid one enormous React component or one enormous Express route file. Use reusable form components and centralized API handling. Keep frontend and backend validation aligned, but always validate again on the server.
+
+## 14. Testing requirements
+
+Add automated tests for the important business and security rules. At minimum test:
+- Monthly reserve target calculation.
+- Contributions and remaining-to-reserve calculations.
+- Need fund balance calculation.
+- Correct separation of Need-related and flexible expenses.
+- Monthly and category budget calculations.
+- User A cannot read, update, or delete User B's transaction, Need, category, or contribution.
+- An ordinary user cannot access admin endpoints or grant themselves privileges.
+- Admin APIs return management metadata only and do not expose transaction amounts or descriptions.
+- Passwords are hashed and are never returned by API responses.
+- Duplicate offline sync requests do not create duplicate transactions.
+- Invalid amounts, invalid references, and malformed payloads are rejected.
+
+Use an appropriate test stack such as Vitest/Jest for unit tests and Supertest for Express API tests. Add a frontend production build check. Include a manual PWA test checklist for installability, offline expense creation, reconnection, and logout with pending entries.
+
+## 15. Implementation sequence
+
+Work in small, verifiable phases. Do not generate the entire app as one unstructured code dump.
+
+**Phase 0 — Inspect and plan**
+- Inspect the existing repository before changing files.
+- If it is empty, initialize the project. If it already contains code, preserve useful work.
+- Create `docs/implementation-plan.md` describing the architecture, data flow, routes, models, and phase breakdown.
+- Identify required environment variables and write `.env.example` with placeholders.
+
+**Phase 1 — Backend foundation and authentication**
+- Configure Express, MongoDB/Mongoose, session storage, security middleware, validation, centralized errors, and health endpoint.
+- Implement registration, login, logout, current session, and password change.
+- Implement bootstrap admin safely.
+- Add tests for authentication and ownership middleware.
+
+**Phase 2 — Core data and business logic**
+- Implement user categories, Needs, Need contributions, transactions, and monthly budgets.
+- Implement dashboard calculations in backend services.
+- Add ownership checks, indexes, validation, pagination, and tests.
+
+**Phase 3 — Main frontend experience**
+- Build the design system and responsive navigation.
+- Implement dashboard, quick-add expense, transaction history, Needs planner, contributions, budgets, and reports.
+- Connect every page to real API data and add loading, error, empty, and success states.
+
+**Phase 4 — PWA and offline capture**
+- Add manifest, icons, service worker, and app-shell caching.
+- Add IndexedDB pending expense queue, idempotent sync, offline status, and safe logout handling.
+- Test on mobile viewport and an installable browser.
+
+**Phase 5 — Admin and privileges**
+- Build admin overview, user list, suspension/reactivation, privileges, and audit log.
+- Confirm admin APIs expose management metadata only.
+- Test all role and privilege boundaries.
+
+**Phase 6 — Verification and handoff**
+- Run backend tests, frontend tests, linting if configured, and production builds.
+- Fix errors rather than suppressing them.
+- Verify the app against the acceptance criteria below.
+- Update README with setup, environment variables, development commands, test commands, production build/start commands, first-admin bootstrap instructions, and PWA installation instructions.
+- Provide a concise summary of implemented features, files created, commands run, test results, and known limitations.
+
+## 16. Acceptance criteria
+
+The first release is complete only when all of these work:
+
+1. A user can register, log in, refresh the page without losing the session, and log out.
+2. User A cannot access any financial data belonging to User B, even by manually changing API IDs.
+3. A user can create and edit a Need with a monthly reserve target.
+4. The dashboard correctly totals mandatory reserve targets and shows contributions and the remaining amount to reserve.
+5. Contributions are not counted as expenses.
+6. A user can record an expense quickly with amount and category, then add optional detail.
+7. A transaction can be associated with a Need; Need-related spending and flexible spending are reported separately.
+8. The dashboard and transaction history show correct monthly and category totals based on saved MongoDB records.
+9. Budgets and category limits update the displayed remaining amounts correctly.
+10. The app is responsive and can be installed as a PWA.
+11. An expense created offline is retained locally, visibly marked pending, and synced once connectivity returns without duplication.
+12. The bootstrap admin can see registered-user management metadata and grant/revoke feature flags.
+13. An admin cannot read friends' personal transaction amounts, descriptions, Needs, or contribution records.
+14. Ordinary users cannot access admin functions or change their own role/privileges.
+15. The project has a usable README, `.env.example`, automated tests for critical rules, and a successful production build.
+
+## 17. Working rules for Antigravity
+
+- Start by inspecting the repository and then create the implementation plan. Continue into implementation; do not stop after writing a plan unless a real blocker prevents progress.
+- Make reasonable engineering decisions without repeatedly asking for approval. Record assumptions in the implementation plan.
+- Build a functional, coherent first release rather than adding many unfinished features.
+- Do not add bank integrations, payment processing, receipt OCR, AI recommendations, social feeds, or complex shared/group wallets in this release.
+- Do not use fake data to make the dashboard look populated. Empty states should look intentional.
+- Never expose secrets or trust client-side authorization.
+- Run tests and builds after meaningful changes. Fix failures before declaring a phase complete.
+- At the end, clearly distinguish implemented features from anything that remains incomplete.
