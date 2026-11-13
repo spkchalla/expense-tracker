@@ -40,11 +40,11 @@ export default defineConfig({
         // App shell caching
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         navigateFallback: '/index.html',
-        // Exclude all /api/* routes from service worker caching
-        navigateFallbackDenylist: [/^\/api/],
+        // Exclude all /api/* routes from service worker navigation fallback
+        navigateFallbackDenylist: [/.*\/api\/.*/],
         runtimeCaching: [
           {
-            urlPattern: /^\/api\/.*/i,
+            urlPattern: /.*\/api\/.*/i,
             handler: 'NetworkOnly', // Never cache financial API responses in SW cache!
           },
         ],

@@ -10,9 +10,10 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 export function createApp(sessionStoreOverride = null) {
   const app = express();
+  const isProduction = config.env === 'production' || Boolean(process.env.RENDER);
 
-  // Trust proxy if in production
-  if (config.env === 'production') {
+  // Trust reverse proxy (Render / Cloudflare) so secure cookies & HTTPS protocols are detected
+  if (isProduction) {
     app.set('trust proxy', 1);
   }
 
@@ -25,23 +26,31 @@ export function createApp(sessionStoreOverride = null) {
   );
 
   // CORS configuration
-  const allowedOrigins = [
-    config.clientOrigin,
+  const configuredOrigins = (config.clientOrigin || '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
+  const defaultOrigins = [
+    'https://expense.spkumarchalla.com',
     'http://localhost:5173',
     'http://localhost:5000',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5000',
   ];
 
+  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...configuredOrigins]));
+
   app.use(
     cors({
       origin: (origin, callback) => {
-        // allow server-to-server or curl/mobile requests without origin header
-        if (!origin || allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error(`Origin ${origin} not allowed by CORS`));
+        // Allow server-to-server or requests without origin header (e.g. mobile/curl)
+        if (!origin) return callback(null, true);
+        const normalizedOrigin = origin.replace(/\/+$/, '');
+        if (allowedOrigins.includes(normalizedOrigin)) {
+          return callback(null, true);
         }
+        return callback(new Error(`Origin ${origin} not allowed by CORS`));
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -79,16 +88,17 @@ export function createApp(sessionStoreOverride = null) {
       resave: false,
       saveUninitialized: false,
       store: sessionStore,
+      proxy: isProduction, // Trust reverse proxy headers
       cookie: {
         httpOnly: true,
         secure: config.cookieSecure,
-        sameSite: 'lax',
+        sameSite: config.cookieSameSite, // 'none' in cross-origin production, 'lax' in dev
         maxAge: config.sessionMaxAgeMs,
       },
     })
   );
 
-  // Mount API
+  // Mount API routes
   app.use('/api', apiRoutes);
 
   // Central error handling

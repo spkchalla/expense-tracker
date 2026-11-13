@@ -36,3 +36,19 @@ describe('Frontend Formatters and Utilities', () => {
     expect(uuid1).not.toBe(uuid2);
   });
 });
+
+import { buildUrl } from '../src/lib/api.js';
+
+describe('API URL Builder', () => {
+  it('constructs correct API URLs with endpoints', () => {
+    const loginUrl = buildUrl('/auth/login');
+    expect(loginUrl).toContain('/api/auth/login');
+
+    const categoriesUrl = buildUrl('/categories?includeArchived=true');
+    expect(categoriesUrl).toContain('/api/categories?includeArchived=true');
+
+    // Handles missing leading slash safely
+    const meUrl = buildUrl('auth/me');
+    expect(meUrl).toContain('/api/auth/me');
+  });
+});

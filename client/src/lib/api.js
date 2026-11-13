@@ -2,10 +2,43 @@
  * Centralized API client wrapper
  */
 
-const BASE_URL = 'https://expense-tracker-ia0u.onrender.com';
+// Resolves the API base URL cleanly across development and production environments:
+// 1. If VITE_API_BASE_URL is specified (e.g. in Vercel), it is used and normalized to include '/api'.
+// 2. In local development (Vite dev server), it defaults to '/api' which is proxied to http://localhost:5000/api.
+// 3. In production, it defaults to the deployed Render backend: 'https://expense-tracker-ia0u.onrender.com/api'.
+function resolveApiBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && envUrl.trim()) {
+    let clean = envUrl.trim().replace(/\/+$/, '');
+    // If full domain provided without /api suffix, append /api
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      if (!clean.endsWith('/api')) {
+        clean = `${clean}/api`;
+      }
+    } else if (!clean.startsWith('/')) {
+      clean = `/${clean}`;
+    }
+    return clean;
+  }
+
+  // Local development default (proxied by Vite)
+  if (import.meta.env.DEV) {
+    return '/api';
+  }
+
+  // Production default: Render backend API endpoint
+  return 'https://expense-tracker-ia0u.onrender.com/api';
+}
+
+export const BASE_URL = resolveApiBaseUrl();
+
+export function buildUrl(endpoint) {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${BASE_URL}${cleanEndpoint}`;
+}
 
 export async function apiRequest(endpoint, options = {}) {
-  const url = `${BASE_URL}${endpoint}`;
+  const url = buildUrl(endpoint);
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -14,7 +47,7 @@ export async function apiRequest(endpoint, options = {}) {
   const config = {
     ...options,
     headers,
-    credentials: 'include', // send session cookies
+    credentials: 'include', // send session cookies across origins
   };
 
   if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
