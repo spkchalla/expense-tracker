@@ -2,7 +2,7 @@
  * Centralized API client wrapper
  */
 
-const BASE_URL = '/api';
+const BASE_URL = 'https://expense-tracker-ia0u.onrender.com';
 
 export async function apiRequest(endpoint, options = {}) {
   const url = `${BASE_URL}${endpoint}`;
