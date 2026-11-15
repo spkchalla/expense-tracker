@@ -98,6 +98,16 @@ export function createApp(sessionStoreOverride = null) {
     })
   );
 
+  // Health check endpoints (available at both root and /api for Render / monitoring services)
+  const healthHandler = (req, res) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.floor(process.uptime()),
+    });
+  };
+  app.get('/health', healthHandler);
+
   // Mount API routes
   app.use('/api', apiRoutes);
 
